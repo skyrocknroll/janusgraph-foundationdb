@@ -161,7 +161,7 @@ public class FoundationDBTx extends AbstractStoreTransaction {
                 log.warn("failed to get ", e);
                 this.restart();
             } catch (Exception e) {
-                log.error("faild to get key {}", key, e);
+                log.error("failed to get key {}", key, e);
                 throw new PermanentBackendException(e);
             }
         }
