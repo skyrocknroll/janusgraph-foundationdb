@@ -32,7 +32,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -64,14 +63,18 @@ public class FoundationDBKeyValueStore implements OrderedKeyValueStore {
         isOpen = true;
     }
 
-     @Override
-    public String getName() {
-        return name;
-    }
-
     private static FoundationDBTx getTransaction(StoreTransaction txh) {
         Preconditions.checkArgument(txh != null);
         return ((FoundationDBTx) txh);//.getTransaction();
+    }
+
+    private static StaticBuffer getBuffer(byte[] entry) {
+        return new StaticArrayBuffer(entry);
+    }
+
+    @Override
+    public String getName() {
+        return name;
     }
 
     @Override
@@ -104,7 +107,7 @@ public class FoundationDBKeyValueStore implements OrderedKeyValueStore {
 
     @Override
     public boolean containsKey(StaticBuffer key, StoreTransaction txh) throws BackendException {
-        return get(key,txh)!=null;
+        return get(key, txh) != null;
     }
 
     @Override
@@ -126,85 +129,32 @@ public class FoundationDBKeyValueStore implements OrderedKeyValueStore {
         final byte[] endKey = db.pack(keyEnd.as(ENTRY_FACTORY));
 
         try {
-            final List<KeyValue> results = tx.getRange(foundKey, endKey, query.getLimit());
-
-            for (final KeyValue keyValue : results) {
-                StaticBuffer key = getBuffer(db.unpack(keyValue.getKey()).getBytes(0));
-                if (selector.include(key))
-                    result.add(new KeyValueEntry(key, getBuffer(keyValue.getValue())));
-            }
+            final Iterator<KeyValue> results = tx.getRange(foundKey, endKey, query.getLimit());
+            return new FoundationDBRecordIterator(results, selector);
         } catch (Exception e) {
             throw new PermanentBackendException(e);
-        }
-
-        log.trace("db={}, op=getSlice, tx={}, resultcount={}", name, txh, result.size());
-
-        return new FoundationDBRecordIterator(result);
-    }
-
-
-
-    private class FoundationDBRecordIterator implements RecordIterator<KeyValueEntry> {
-        private final Iterator<KeyValueEntry> entries;
-
-        public FoundationDBRecordIterator(final List<KeyValueEntry> result) {
-              this.entries = result.iterator();
-        }
-
-        @Override
-        public boolean hasNext() {
-            return entries.hasNext();
-        }
-
-        @Override
-        public KeyValueEntry next() {
-            return entries.next();
-        }
-
-        @Override
-        public void close() {
-        }
-
-        @Override
-        public void remove() {
-            throw new UnsupportedOperationException();
         }
     }
 
     @Override
-    public Map<KVQuery,RecordIterator<KeyValueEntry>> getSlices(List<KVQuery> queries, StoreTransaction txh) throws BackendException {
+    public Map<KVQuery, RecordIterator<KeyValueEntry>> getSlices(List<KVQuery> queries, StoreTransaction txh) throws BackendException {
         log.trace("beginning db={}, op=getSlice, tx={}", name, txh);
         FoundationDBTx tx = getTransaction(txh);
         final Map<KVQuery, RecordIterator<KeyValueEntry>> resultMap = new ConcurrentHashMap<>();
-        final List<CompletableFuture<Void>> futures = new ArrayList<>();
-
         try {
-            final List<Object[]> preppedQueries = new LinkedList<>();
             for (final KVQuery query : queries) {
                 final StaticBuffer keyStart = query.getStart();
                 final StaticBuffer keyEnd = query.getEnd();
                 final KeySelector selector = query.getKeySelector();
                 final byte[] foundKey = db.pack(keyStart.as(ENTRY_FACTORY));
                 final byte[] endKey = db.pack(keyEnd.as(ENTRY_FACTORY));
-                preppedQueries.add(new Object[]{query, foundKey, endKey});
+                resultMap.put(query, new FoundationDBRecordIterator(tx.getRange(foundKey, endKey, query.getLimit()), selector));
             }
-            final Map<KVQuery, List<KeyValue>> result = tx.getMultiRange(preppedQueries);
-
-            for (Map.Entry<KVQuery, List<KeyValue>> entry : result.entrySet()) {
-                final List<KeyValueEntry> results = new ArrayList<>();
-                for (final KeyValue keyValue : entry.getValue()) {
-                final StaticBuffer key = getBuffer(db.unpack(keyValue.getKey()).getBytes(0));
-                if (entry.getKey().getKeySelector().include(key))
-                    results.add(new KeyValueEntry(key, getBuffer(keyValue.getValue())));
-                }
-                resultMap.put(entry.getKey(), new FoundationDBRecordIterator(results));
-
-            }
+            return resultMap;
         } catch (Exception e) {
             throw new PermanentBackendException(e);
         }
 
-        return resultMap;
     }
 
     @Override
@@ -236,7 +186,41 @@ public class FoundationDBKeyValueStore implements OrderedKeyValueStore {
         }
     }
 
-    private static StaticBuffer getBuffer(byte[] entry) {
-        return new StaticArrayBuffer(entry);
+    private class FoundationDBRecordIterator implements RecordIterator<KeyValueEntry> {
+        private final Iterator<KeyValue> entries;
+        private final KeySelector selector;
+        private KeyValueEntry keyValueEntry;
+
+        public FoundationDBRecordIterator(final Iterator<KeyValue> result, final KeySelector keySelector) {
+            this.entries = result;
+            this.selector = keySelector;
+        }
+
+        @Override
+        public boolean hasNext() {
+            while (entries.hasNext()) {
+                KeyValue keyValue = entries.next();
+                StaticBuffer key = getBuffer(db.unpack(keyValue.getKey()).getBytes(0));
+                if (selector.include(key)) {
+                    this.keyValueEntry = new KeyValueEntry(key, getBuffer(keyValue.getValue()));
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        @Override
+        public KeyValueEntry next() {
+            return this.keyValueEntry;
+        }
+
+        @Override
+        public void close() {
+        }
+
+        @Override
+        public void remove() {
+            throw new UnsupportedOperationException();
+        }
     }
 }

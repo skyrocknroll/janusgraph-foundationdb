@@ -21,7 +21,10 @@ import com.apple.foundationdb.directory.DirectoryLayer;
 import com.apple.foundationdb.directory.DirectorySubspace;
 import com.apple.foundationdb.directory.PathUtil;
 import com.google.common.base.Preconditions;
-import org.janusgraph.diskstorage.*;
+import org.janusgraph.diskstorage.BackendException;
+import org.janusgraph.diskstorage.BaseTransactionConfig;
+import org.janusgraph.diskstorage.PermanentBackendException;
+import org.janusgraph.diskstorage.StaticBuffer;
 import org.janusgraph.diskstorage.common.AbstractStoreManager;
 import org.janusgraph.diskstorage.configuration.Configuration;
 import org.janusgraph.diskstorage.keycolumnvalue.KeyRange;
@@ -32,7 +35,6 @@ import org.janusgraph.diskstorage.keycolumnvalue.keyvalue.KVMutation;
 import org.janusgraph.diskstorage.keycolumnvalue.keyvalue.KeyValueEntry;
 import org.janusgraph.diskstorage.keycolumnvalue.keyvalue.OrderedKeyValueStoreManager;
 import org.janusgraph.graphdb.configuration.GraphDatabaseConfiguration;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,10 +43,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 
-import static com.experoinc.janusgraph.diskstorage.foundationdb.FoundationDBConfigOptions.CLUSTER_FILE_PATH;
-import static com.experoinc.janusgraph.diskstorage.foundationdb.FoundationDBConfigOptions.DIRECTORY;
-import static com.experoinc.janusgraph.diskstorage.foundationdb.FoundationDBConfigOptions.ISOLATION_LEVEL;
-import static com.experoinc.janusgraph.diskstorage.foundationdb.FoundationDBConfigOptions.VERSION;
+import static com.experoinc.janusgraph.diskstorage.foundationdb.FoundationDBConfigOptions.*;
 import static org.janusgraph.graphdb.configuration.GraphDatabaseConfiguration.GRAPH_NAME;
 
 /**
@@ -55,15 +54,13 @@ import static org.janusgraph.graphdb.configuration.GraphDatabaseConfiguration.GR
 public class FoundationDBStoreManager extends AbstractStoreManager implements OrderedKeyValueStoreManager {
 
     private static final Logger log = LoggerFactory.getLogger(FoundationDBStoreManager.class);
-
-    private final Map<String, FoundationDBKeyValueStore> stores;
-
-    protected FDB fdb;
-    protected Database db;
     protected final StoreFeatures features;
-    protected DirectorySubspace rootDirectory;
     protected final String rootDirectoryName;
     protected final FoundationDBTx.IsolationLevel isolationLevel;
+    private final Map<String, FoundationDBKeyValueStore> stores;
+    protected FDB fdb;
+    protected Database db;
+    protected DirectorySubspace rootDirectory;
 
     public FoundationDBStoreManager(Configuration configuration) throws BackendException {
         super(configuration);
@@ -72,7 +69,7 @@ public class FoundationDBStoreManager extends AbstractStoreManager implements Or
         fdb = FDB.selectAPIVersion(determineFoundationDbVersion(configuration));
         rootDirectoryName = determineRootDirectoryName(configuration);
         db = !"default".equals(configuration.get(CLUSTER_FILE_PATH)) ?
-            fdb.open(configuration.get(CLUSTER_FILE_PATH)) : fdb.open();
+                fdb.open(configuration.get(CLUSTER_FILE_PATH)) : fdb.open();
         final String isolationLevelStr = configuration.get(ISOLATION_LEVEL);
         switch (isolationLevelStr.toLowerCase().trim()) {
             case "serializable":
@@ -90,15 +87,15 @@ public class FoundationDBStoreManager extends AbstractStoreManager implements Or
         initialize(rootDirectoryName);
 
         features = new StandardStoreFeatures.Builder()
-                    .orderedScan(true)
-                    .transactional(transactional)
-                    .keyConsistent(GraphDatabaseConfiguration.buildGraphConfiguration())
-                    .locking(true)
-                    .keyOrdered(true)
-                    .supportsInterruption(false)
-                    .optimisticLocking(true)
-                    .multiQuery(true)
-                    .build();
+                .orderedScan(true)
+                .transactional(transactional)
+                .keyConsistent(GraphDatabaseConfiguration.buildGraphConfiguration())
+                .locking(true)
+                .keyOrdered(true)
+                .supportsInterruption(false)
+                .optimisticLocking(true)
+                .multiQuery(true)
+                .build();
     }
 
     private void initialize(final String directoryName) throws BackendException {
@@ -124,7 +121,6 @@ public class FoundationDBStoreManager extends AbstractStoreManager implements Or
     public StoreTransaction beginTransaction(final BaseTransactionConfig txCfg) throws BackendException {
         try {
             final Transaction tx = db.createTransaction();
-
             final StoreTransaction fdbTx = new FoundationDBTx(db, tx, txCfg, isolationLevel);
 
             if (log.isTraceEnabled()) {
@@ -157,7 +153,7 @@ public class FoundationDBStoreManager extends AbstractStoreManager implements Or
 
     @Override
     public void mutateMany(Map<String, KVMutation> mutations, StoreTransaction txh) throws BackendException {
-        for (Map.Entry<String,KVMutation> mutation : mutations.entrySet()) {
+        for (Map.Entry<String, KVMutation> mutation : mutations.entrySet()) {
             FoundationDBKeyValueStore store = openDatabase(mutation.getKey());
             KVMutation mutationValue = mutation.getValue();
 
@@ -169,13 +165,13 @@ public class FoundationDBStoreManager extends AbstractStoreManager implements Or
 
             if (mutationValue.hasAdditions()) {
                 for (KeyValueEntry entry : mutationValue.getAdditions()) {
-                    store.insert(entry.getKey(),entry.getValue(),txh);
+                    store.insert(entry.getKey(), entry.getValue(), txh);
                     log.trace("Insertion on {}: {}", mutation.getKey(), entry);
                 }
             }
             if (mutationValue.hasDeletions()) {
                 for (StaticBuffer del : mutationValue.getDeletions()) {
-                    store.delete(del,txh);
+                    store.delete(del, txh);
                     log.trace("Deletion on {}: {}", mutation.getKey(), del);
                 }
             }
@@ -239,15 +235,6 @@ public class FoundationDBStoreManager extends AbstractStoreManager implements Or
         return getClass().getSimpleName();
     }
 
-
-    private static class TransactionBegin extends Exception {
-        private static final long serialVersionUID = 1L;
-
-        private TransactionBegin(String msg) {
-            super(msg);
-        }
-    }
-
     private String determineRootDirectoryName(Configuration config) {
         if (!config.has(DIRECTORY) && (config.has(GRAPH_NAME))) return config.get(GRAPH_NAME);
         return config.get(DIRECTORY);
@@ -255,5 +242,13 @@ public class FoundationDBStoreManager extends AbstractStoreManager implements Or
 
     private int determineFoundationDbVersion(Configuration config) {
         return config.get(VERSION);
+    }
+
+    private static class TransactionBegin extends Exception {
+        private static final long serialVersionUID = 1L;
+
+        private TransactionBegin(String msg) {
+            super(msg);
+        }
     }
 }
