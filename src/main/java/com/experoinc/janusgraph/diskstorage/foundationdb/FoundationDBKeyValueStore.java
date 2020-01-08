@@ -126,6 +126,7 @@ public class FoundationDBKeyValueStore implements OrderedKeyValueStore {
         final byte[] endKey = db.pack(keyEnd.as(ENTRY_FACTORY));
 
         try {
+            log.info(" startKey {} -- {} -- {}", foundKey, endKey, query.getLimit());
             final List<KeyValue> results = tx.getRange(foundKey, endKey, query.getLimit());
 
             for (final KeyValue keyValue : results) {
