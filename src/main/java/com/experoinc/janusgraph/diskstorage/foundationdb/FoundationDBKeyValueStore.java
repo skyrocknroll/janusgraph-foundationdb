@@ -127,6 +127,7 @@ public class FoundationDBKeyValueStore implements OrderedKeyValueStore {
 
         try {
             final Iterator<KeyValue> results = tx.getRange(foundKey, endKey, query.getLimit());
+            log.info("get Slice result {}", results);
             return new FoundationDBRecordIterator(results, selector);
         } catch (Exception e) {
             log.error("failed to getSlice", e);
@@ -154,13 +155,18 @@ public class FoundationDBKeyValueStore implements OrderedKeyValueStore {
                     StaticBuffer key = getBuffer(db.unpack(keyValue.getKey()).getBytes(0));
                     if (selector.include(key)) {
                         this.keyValueEntry = new KeyValueEntry(key, getBuffer(keyValue.getValue()));
+                        log.info("matched key {}", key);
+                        log.info("returning true");
                         return true;
+                    }else {
+                        log.info("unmatched key {}", key);
                     }
                 }
             } catch (RuntimeException e) {
                 log.error("failed to hasNext", e);
                 throw  e;
             }
+            log.info("returning false ");
             return false;
         }
 
