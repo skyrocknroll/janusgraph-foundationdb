@@ -117,6 +117,7 @@ public class FoundationDBKeyValueStore implements OrderedKeyValueStore {
     @Override
     public RecordIterator<KeyValueEntry> getSlice(KVQuery query, StoreTransaction txh) throws BackendException {
         log.trace("beginning db={}, op=getSlice, tx={}", name, txh);
+        log.info("start getSlice");
         final FoundationDBTx tx = getTransaction(txh);
         final StaticBuffer keyStart = query.getStart();
         final StaticBuffer keyEnd = query.getEnd();
@@ -128,6 +129,7 @@ public class FoundationDBKeyValueStore implements OrderedKeyValueStore {
             final Iterator<KeyValue> results = tx.getRange(foundKey, endKey, query.getLimit());
             return new FoundationDBRecordIterator(results, selector);
         } catch (Exception e) {
+            log.error("failed to getSlice", e);
             throw new PermanentBackendException(e);
         }
     }
@@ -146,13 +148,18 @@ public class FoundationDBKeyValueStore implements OrderedKeyValueStore {
 
         @Override
         public boolean hasNext() {
-            while (entries.hasNext()) {
-                KeyValue keyValue = entries.next();
-                StaticBuffer key = getBuffer(db.unpack(keyValue.getKey()).getBytes(0));
-                if (selector.include(key)) {
-                    this.keyValueEntry = new KeyValueEntry(key, getBuffer(keyValue.getValue()));
-                    return true;
+            try {
+                while (entries.hasNext()) {
+                    KeyValue keyValue = entries.next();
+                    StaticBuffer key = getBuffer(db.unpack(keyValue.getKey()).getBytes(0));
+                    if (selector.include(key)) {
+                        this.keyValueEntry = new KeyValueEntry(key, getBuffer(keyValue.getValue()));
+                        return true;
+                    }
                 }
+            } catch (RuntimeException e) {
+                log.error("failed to hasNext", e);
+                throw  e;
             }
             return false;
         }
@@ -175,6 +182,7 @@ public class FoundationDBKeyValueStore implements OrderedKeyValueStore {
     @Override
     public Map<KVQuery, RecordIterator<KeyValueEntry>> getSlices(List<KVQuery> queries, StoreTransaction txh) throws BackendException {
         log.trace("beginning db={}, op=getSlice, tx={}", name, txh);
+        log.info("start getSlices");
         FoundationDBTx tx = getTransaction(txh);
         final Map<KVQuery, RecordIterator<KeyValueEntry>> resultMap = new ConcurrentHashMap<>();
         try {
@@ -188,6 +196,7 @@ public class FoundationDBKeyValueStore implements OrderedKeyValueStore {
             }
             return resultMap;
         } catch (Exception e) {
+            log.error("failed to get slices", e);
             throw new PermanentBackendException(e);
         }
     }
