@@ -130,8 +130,12 @@ public class FoundationDBKeyValueStore implements OrderedKeyValueStore {
 
             for (final KeyValue keyValue : results) {
                 StaticBuffer key = getBuffer(db.unpack(keyValue.getKey()).getBytes(0));
-                if (selector.include(key))
+                if (selector.include(key)) {
+                    log.info("matched key {}", key);
                     result.add(new KeyValueEntry(key, getBuffer(keyValue.getValue())));
+                }else {
+                    log.info("failed to match key {}", key);
+                }
             }
         } catch (Exception e) {
             throw new PermanentBackendException(e);
