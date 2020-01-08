@@ -143,7 +143,7 @@ public class FoundationDBKeyValueStore implements OrderedKeyValueStore {
         }
 
         log.trace("db={}, op=getSlice, tx={}, resultcount={}", name, txh, result.size());
-
+        log.info("size of result {}", result.size());
         return new FoundationDBRecordIterator(result);
     }
 
