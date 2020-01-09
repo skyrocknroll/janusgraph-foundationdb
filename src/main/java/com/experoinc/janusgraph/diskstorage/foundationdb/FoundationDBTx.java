@@ -82,6 +82,7 @@ public class FoundationDBTx extends AbstractStoreTransaction {
 
     @Override
     public synchronized void rollback() throws BackendException {
+        log.info("rolling back");
         super.rollback();
         if (tx == null) return;
         if (log.isTraceEnabled())
@@ -101,6 +102,7 @@ public class FoundationDBTx extends AbstractStoreTransaction {
 
     @Override
     public synchronized void commit() throws BackendException {
+        log.info("commiting ");
         boolean failing = true;
         for (int i = 0; i < maxRuns; i++) {
             super.commit();

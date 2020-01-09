@@ -123,6 +123,7 @@ public class FoundationDBStoreManager extends AbstractStoreManager implements Or
     @Override
     public StoreTransaction beginTransaction(final BaseTransactionConfig txCfg) throws BackendException {
         try {
+            log.info("beginning transaction");
             final Transaction tx = db.createTransaction();
 
             final StoreTransaction fdbTx = new FoundationDBTx(db, tx, txCfg, isolationLevel);

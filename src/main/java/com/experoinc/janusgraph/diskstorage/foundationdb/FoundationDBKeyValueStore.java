@@ -125,6 +125,10 @@ public class FoundationDBKeyValueStore implements OrderedKeyValueStore {
         final byte[] foundKey = db.pack(keyStart.as(ENTRY_FACTORY));
         final byte[] endKey = db.pack(keyEnd.as(ENTRY_FACTORY));
 
+//        int i =0;
+//        while (i<100000000) {
+//            i++;
+//        }
         try {
             log.info(" startKey {} -- {} -- {}", foundKey, endKey, query.getLimit());
             final List<KeyValue> results = tx.getRange(foundKey, endKey, query.getLimit());
@@ -183,6 +187,10 @@ public class FoundationDBKeyValueStore implements OrderedKeyValueStore {
         final Map<KVQuery, RecordIterator<KeyValueEntry>> resultMap = new ConcurrentHashMap<>();
         final List<CompletableFuture<Void>> futures = new ArrayList<>();
 
+//        int i =0;
+//        while (i<100000000) {
+//            i++;
+//        }
         try {
             final List<Object[]> preppedQueries = new LinkedList<>();
             for (final KVQuery query : queries) {
@@ -193,6 +201,7 @@ public class FoundationDBKeyValueStore implements OrderedKeyValueStore {
                 final byte[] endKey = db.pack(keyEnd.as(ENTRY_FACTORY));
                 preppedQueries.add(new Object[]{query, foundKey, endKey});
             }
+            log.info("get slices");
             final Map<KVQuery, List<KeyValue>> result = tx.getMultiRange(preppedQueries);
 
             for (Map.Entry<KVQuery, List<KeyValue>> entry : result.entrySet()) {
@@ -205,6 +214,7 @@ public class FoundationDBKeyValueStore implements OrderedKeyValueStore {
                 resultMap.put(entry.getKey(), new FoundationDBRecordIterator(results));
 
             }
+            log.info("get Slices end");
         } catch (Exception e) {
             throw new PermanentBackendException(e);
         }
