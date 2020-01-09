@@ -178,7 +178,6 @@ public class FoundationDBTx extends AbstractStoreTransaction {
         boolean failing = true;
         List<KeyValue> result = Collections.emptyList();
         for (int i = 0; i < maxRuns; i++) {
-            txCtr.get();
             try {
                 ReadTransaction transaction = getTransaction(isolationLevel, this.tx);
                 result = transaction.getRange(new Range(startKey, endKey), limit).asList().join();
@@ -231,7 +230,7 @@ public class FoundationDBTx extends AbstractStoreTransaction {
                                         this.restart();
                                 }
                             }));
-                } catch (IllegalStateException fdbe) {
+                } catch (RuntimeException fdbe) {
                     // retry on IllegalStateException thrown when tx state changes prior to getRange call
                 }
             }
