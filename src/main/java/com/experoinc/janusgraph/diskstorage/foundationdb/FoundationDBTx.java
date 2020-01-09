@@ -178,17 +178,13 @@ public class FoundationDBTx extends AbstractStoreTransaction {
         boolean failing = true;
         List<KeyValue> result = Collections.emptyList();
         for (int i = 0; i < maxRuns; i++) {
-            final int startTxId = txCtr.get();
+            txCtr.get();
             try {
                 ReadTransaction transaction = getTransaction(isolationLevel, this.tx);
-                result = transaction.getRange(new Range(startKey, endKey), limit).asList().get();
+                result = transaction.getRange(new Range(startKey, endKey), limit).asList().join();
                 if (result == null) return Collections.emptyList();
                 failing = false;
                 break;
-            } catch (ExecutionException e) {
-                log.warn("failed to getRange", e);
-                if (txCtr.get() == startTxId)
-                    this.restart();
             } catch (Exception e) {
                 log.error("raising backend exception for startKey {} endKey {} limit", startKey, endKey, limit, e);
                 throw new PermanentBackendException(e);
@@ -242,9 +238,7 @@ public class FoundationDBTx extends AbstractStoreTransaction {
         }
         for (final CompletableFuture future : futures) {
             try {
-                future.get();
-            } catch (ExecutionException ee) {
-                // some tasks will fail due to tx time limits being exceeded
+                future.join();
             } catch (IllegalStateException is) {
                 // illegal state can arise from tx being closed while tx is inflight
             } catch (Exception e) {
