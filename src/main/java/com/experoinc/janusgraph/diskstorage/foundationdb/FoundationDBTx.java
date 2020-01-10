@@ -208,30 +208,29 @@ public class FoundationDBTx extends AbstractStoreTransaction {
             throws PermanentBackendException {
         Map<KVQuery, List<KeyValue>> resultMap = new ConcurrentHashMap<>();
         final List<CompletableFuture> futures = new LinkedList<>();
-        for(Object[] obj : queries) {
-            final KVQuery query = (KVQuery) obj[0];
-            final byte[] start = (byte[]) obj[1];
-            final byte[] end = (byte[]) obj[2];
-
-            futures.add(tx.getRange(start, end, query.getLimit()).asList()
-                    .whenComplete((res, th) -> {
-                        if (th == null) {
-                            if (res == null) {
-                                res = Collections.emptyList();
-                            }
-                            resultMap.put(query, res);
-                        } else {
-                            log.error("failed to complete getRange of multiRange", th);
-                            throw new RuntimeException("failed to getRange for multiRangeQuery", th);
-                        }
-                    }));
-        }
         try {
+            for(Object[] obj : queries) {
+                final KVQuery query = (KVQuery) obj[0];
+                final byte[] start = (byte[]) obj[1];
+                final byte[] end = (byte[]) obj[2];
+
+                futures.add(tx.getRange(start, end, query.getLimit()).asList()
+                        .whenComplete((res, th) -> {
+                            if (th == null) {
+                                if (res == null) {
+                                    res = Collections.emptyList();
+                                }
+                                resultMap.put(query, res);
+                            } else {
+                                log.error("failed to complete getRange of multiRange", th);
+                                throw new RuntimeException("failed to getRange for multiRangeQuery", th);
+                            }
+                        }));
+            }
             futures.forEach(CompletableFuture::join);
         } catch (Exception e) {
             throw new PermanentBackendException("failed to join results", e);
         }
-
         return resultMap;
     }
 
