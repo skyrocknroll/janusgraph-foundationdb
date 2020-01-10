@@ -207,43 +207,29 @@ public class FoundationDBTx extends AbstractStoreTransaction {
     public synchronized  Map<KVQuery, List<KeyValue>> getMultiRange(final List<Object[]> queries)
             throws PermanentBackendException {
         Map<KVQuery, List<KeyValue>> resultMap = new ConcurrentHashMap<>();
-        final List<Object[]> retries = new CopyOnWriteArrayList<>(queries);
         final List<CompletableFuture> futures = new LinkedList<>();
-        for (int i = 0; i < (maxRuns * 5); i++) {
-            for(Object[] obj : retries) {
-                final KVQuery query = (KVQuery) obj[0];
-                final byte[] start = (byte[]) obj[1];
-                final byte[] end = (byte[]) obj[2];
+        for(Object[] obj : queries) {
+            final KVQuery query = (KVQuery) obj[0];
+            final byte[] start = (byte[]) obj[1];
+            final byte[] end = (byte[]) obj[2];
 
-                final int startTxId = txCtr.get();
-                try {
-                    futures.add(tx.getRange(start, end, query.getLimit()).asList()
-                            .whenComplete((res, th) -> {
-                                if (th == null) {
-                                    retries.remove(query);
-                                    if (res == null) {
-                                        res = Collections.emptyList();
-                                    }
-                                    resultMap.put(query, res);
-                                } else {
-                                    if (startTxId == txCtr.get())
-                                        this.restart();
-                                }
-                            }));
-                } catch (RuntimeException fdbe) {
-                    // retry on IllegalStateException thrown when tx state changes prior to getRange call
-                }
-            }
+            futures.add(tx.getRange(start, end, query.getLimit()).asList()
+                    .whenComplete((res, th) -> {
+                        if (th == null) {
+                            if (res == null) {
+                                res = Collections.emptyList();
+                            }
+                            resultMap.put(query, res);
+                        } else {
+                            log.error("failed to complete getRange of multiRange", th);
+                            throw new RuntimeException("failed to getRange for multiRangeQuery", th);
+                        }
+                    }));
         }
-        for (final CompletableFuture future : futures) {
-            try {
-                future.join();
-            } catch (IllegalStateException is) {
-                // illegal state can arise from tx being closed while tx is inflight
-            } catch (Exception e) {
-                log.error("failed to get multi range for queries {}", queries, e);
-                throw new PermanentBackendException(e);
-            }
+        try {
+            futures.forEach(CompletableFuture::join);
+        } catch (Exception e) {
+            throw new PermanentBackendException("failed to join results", e);
         }
 
         return resultMap;
