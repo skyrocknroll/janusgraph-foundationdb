@@ -156,12 +156,9 @@ public class FoundationDBTx extends AbstractStoreTransaction {
         for (int i = 0; i < maxRuns; i++) {
             try {
                 ReadTransaction transaction  = getTransaction(this.isolationLevel, this.tx);
-                value = transaction.get(key).get();
+                value = transaction.get(key).join();
                 failing = false;
                 break;
-            } catch (ExecutionException e) {
-                log.warn("failed to get ", e);
-                this.restart();
             } catch (Exception e) {
                 log.error("failed to get key {}", key, e);
                 throw new PermanentBackendException(e);
