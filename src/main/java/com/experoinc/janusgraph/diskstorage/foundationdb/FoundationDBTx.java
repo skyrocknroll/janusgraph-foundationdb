@@ -177,7 +177,6 @@ public class FoundationDBTx extends AbstractStoreTransaction {
                                    final int limit) throws PermanentBackendException {
         boolean failing = true;
         List<KeyValue> result = Collections.emptyList();
-        final int startTxId = txCtr.get();
         for (int i = 0; i < maxRuns; i++) {
             try {
                 ReadTransaction transaction = getTransaction(isolationLevel, this.tx);
@@ -189,8 +188,6 @@ public class FoundationDBTx extends AbstractStoreTransaction {
                 if(i==maxRuns) {
                     throw new PermanentBackendException("Max transaction reset count for getRange exceeded but last failed with ", e);
                 }
-                if (txCtr.get() == startTxId)
-                    this.restart();
                 log.warn("raising backend exception for startKey {} endKey {} limit", startKey, endKey, limit, e);
             }
         }
@@ -214,7 +211,6 @@ public class FoundationDBTx extends AbstractStoreTransaction {
         Map<KVQuery, List<KeyValue>> resultMap = new ConcurrentHashMap<>();
         try {
             for (int i = 0; i < maxRuns; i++) {
-                final int startTxId = txCtr.get();
                 final List<CompletableFuture> futures = new LinkedList<>();
                 for (Object[] obj: queries) {
                     final KVQuery query = (KVQuery) obj[0];
@@ -230,8 +226,6 @@ public class FoundationDBTx extends AbstractStoreTransaction {
                                         resultMap.put(query, res);
                                     } else {
                                         log.warn("failed to complete getRange of multiRange", th);
-                                        if (startTxId == txCtr.get())
-                                            this.restart();
                                     }
                                 }));
                     }
