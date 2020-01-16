@@ -206,13 +206,16 @@ public class FoundationDBTx extends AbstractStoreTransaction {
     public synchronized  Map<KVQuery, List<KeyValue>> getMultiRange(final List<Object[]> queries)
             throws PermanentBackendException {
         Map<KVQuery, List<KeyValue>> resultMap = new ConcurrentHashMap<>();
+
         try {
             for (int i = 0; i < maxRuns; i++) {
                 final List<CompletableFuture> futures = new LinkedList<>();
-                for (Object[] obj: queries) {
+
+                for (Object[] obj : queries) {
                     final KVQuery query = (KVQuery) obj[0];
                     final byte[] start = (byte[]) obj[1];
                     final byte[] end = (byte[]) obj[2];
+
                     if(!resultMap.containsKey(query)) {
                         futures.add(tx.getRange(start, end, query.getLimit()).asList()
                                 .whenComplete((res, th) -> {
@@ -220,6 +223,7 @@ public class FoundationDBTx extends AbstractStoreTransaction {
                                         if (res == null) {
                                             res = Collections.emptyList();
                                         }
+
                                         resultMap.put(query, res);
                                     } else {
                                         log.warn("failed to complete getRange of multiRange", th);
@@ -227,14 +231,17 @@ public class FoundationDBTx extends AbstractStoreTransaction {
                                 }));
                     }
                 }
+
                 futures.forEach(CompletableFuture::join);
             }
-            if(resultMap.size()!=queries.size()) {
+
+            if(resultMap.size() != queries.size()) {
                 throw new PermanentBackendException("Max transaction reset count exceeded for getMultiRange");
             }
         } catch (Exception e) {
             throw new PermanentBackendException("failed to join results", e);
         }
+
         return resultMap;
     }
 
