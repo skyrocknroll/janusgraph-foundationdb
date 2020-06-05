@@ -156,12 +156,9 @@ public class FoundationDBTx extends AbstractStoreTransaction {
         for (int i = 0; i < maxRuns; i++) {
             try {
                 ReadTransaction transaction  = getTransaction(this.isolationLevel, this.tx);
-                value = transaction.get(key).get();
+                value = transaction.get(key).join();
                 failing = false;
                 break;
-            } catch (ExecutionException e) {
-                log.warn("failed to get ", e);
-                this.restart();
             } catch (Exception e) {
                 log.error("failed to get key {}", key, e);
                 throw new PermanentBackendException(e);
@@ -185,12 +182,14 @@ public class FoundationDBTx extends AbstractStoreTransaction {
                 failing = false;
                 break;
             } catch (Exception e) {
-                log.error("raising backend exception for startKey {} endKey {} limit", startKey, endKey, limit, e);
-                throw new PermanentBackendException(e);
+                if(i==maxRuns) {
+                    throw new PermanentBackendException("Max transaction reset count for getRange exceeded but last failed with ", e);
+                }
+                log.warn("raising backend exception for startKey {} endKey {} limit", startKey, endKey, limit, e);
             }
         }
         if (failing) {
-            throw new PermanentBackendException("Max transaction reset count exceeded");
+            throw new PermanentBackendException("Max transaction reset count exceeded for getRange");
         }
         return result;
     }
@@ -207,30 +206,42 @@ public class FoundationDBTx extends AbstractStoreTransaction {
     public synchronized  Map<KVQuery, List<KeyValue>> getMultiRange(final List<Object[]> queries)
             throws PermanentBackendException {
         Map<KVQuery, List<KeyValue>> resultMap = new ConcurrentHashMap<>();
-        final List<CompletableFuture> futures = new LinkedList<>();
-        try {
-            for(Object[] obj : queries) {
-                final KVQuery query = (KVQuery) obj[0];
-                final byte[] start = (byte[]) obj[1];
-                final byte[] end = (byte[]) obj[2];
 
-                futures.add(tx.getRange(start, end, query.getLimit()).asList()
-                        .whenComplete((res, th) -> {
-                            if (th == null) {
-                                if (res == null) {
-                                    res = Collections.emptyList();
-                                }
-                                resultMap.put(query, res);
-                            } else {
-                                log.error("failed to complete getRange of multiRange", th);
-                                throw new RuntimeException("failed to getRange for multiRangeQuery", th);
-                            }
-                        }));
+        try {
+            for (int i = 0; i < maxRuns; i++) {
+                final List<CompletableFuture> futures = new LinkedList<>();
+
+                for (Object[] obj : queries) {
+                    final KVQuery query = (KVQuery) obj[0];
+                    final byte[] start = (byte[]) obj[1];
+                    final byte[] end = (byte[]) obj[2];
+
+                    if(!resultMap.containsKey(query)) {
+                        futures.add(tx.getRange(start, end, query.getLimit()).asList()
+                                .whenComplete((res, th) -> {
+                                    if (th == null) {
+                                        if (res == null) {
+                                            res = Collections.emptyList();
+                                        }
+
+                                        resultMap.put(query, res);
+                                    } else {
+                                        log.warn("failed to complete getRange of multiRange", th);
+                                    }
+                                }));
+                    }
+                }
+
+                futures.forEach(CompletableFuture::join);
             }
-            futures.forEach(CompletableFuture::join);
+
+            if(resultMap.size() != queries.size()) {
+                throw new PermanentBackendException("Max transaction reset count exceeded for getMultiRange");
+            }
         } catch (Exception e) {
             throw new PermanentBackendException("failed to join results", e);
         }
+
         return resultMap;
     }
 
